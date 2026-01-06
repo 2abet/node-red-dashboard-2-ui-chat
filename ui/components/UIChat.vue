@@ -111,11 +111,7 @@ export default {
                 console.debug('UIChat: session not yet established, ignoring message')
                 return false
             }
-            if (!targetSession) {
-                // Allow broadcast messages that intentionally omit session targeting
-                return true
-            }
-            return targetSession === this.sessionId
+            return targetSession && targetSession === this.sessionId
         },
         renderMarkdown (text) {
             try {
@@ -174,6 +170,11 @@ export default {
         },
         sendMessage () {
             if (!this.newMessage.trim() || !this.state.enabled) return
+
+            if (!this.sessionId) {
+                console.warn('UIChat: cannot send message until session is established')
+                return
+            }
 
             // Create message object
             const message = {
