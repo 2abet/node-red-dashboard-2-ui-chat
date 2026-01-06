@@ -99,7 +99,6 @@ export default {
         if (this.$socket?.off) {
             this.$socket.off('connect', this.updateSessionId)
         }
-        this.sessionId = null
     },
     methods: {
         updateSessionId () {
@@ -109,7 +108,10 @@ export default {
             // Accept legacy session identifiers for compatibility, prefer _session.id going forward
             const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
             if (!this.sessionId) {
-                return !targetSession
+                return false
+            }
+            if (!targetSession) {
+                return true
             }
             return targetSession === this.sessionId
         },
