@@ -108,9 +108,11 @@ export default {
             // Accept legacy session identifiers for compatibility, prefer _session.id going forward
             const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
             if (!this.sessionId) {
+                console.debug('UIChat: session not yet established, ignoring message')
                 return false
             }
             if (!targetSession) {
+                // Allow broadcast messages that intentionally omit session targeting
                 return true
             }
             return targetSession === this.sessionId
