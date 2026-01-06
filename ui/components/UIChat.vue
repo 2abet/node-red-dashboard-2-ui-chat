@@ -99,12 +99,14 @@ export default {
         if (this.$socket?.off) {
             this.$socket.off('connect', this.updateSessionId)
         }
+        this.sessionId = null
     },
     methods: {
         updateSessionId () {
             this.sessionId = this.$socket?.id || null
         },
         isForCurrentSession (msg) {
+            // Accept legacy session identifiers for compatibility, prefer _session.id going forward
             const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
             if (!this.sessionId) {
                 return !targetSession
