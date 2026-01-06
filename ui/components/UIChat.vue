@@ -32,11 +32,11 @@
                     v-model="newMessage"
                     type="text"
                     :placeholder="props.inputPlaceholder === undefined ? 'Type a message...' : props.inputPlaceholder"
-                    :disabled="!state.enabled"
+                    :disabled="!state.enabled || !sessionId"
                     @keyup.enter="sendMessage"
                 >
                 <button
-                    class="nrdb-ui-chat-send" :disabled="!state.enabled || !newMessage.trim()"
+                    class="nrdb-ui-chat-send" :disabled="!state.enabled || !newMessage.trim() || !sessionId"
                     @click="sendMessage"
                 >
                     <AirplaneIcon />
@@ -112,8 +112,12 @@ export default {
                 return false
             }
             if (!targetSession) {
-                console.debug('UIChat: processing broadcast message without session targeting')
-                return true
+                const allowBroadcast = this.props?.allowBroadcast !== false
+                if (allowBroadcast) {
+                    console.debug('UIChat: processing broadcast message without session targeting')
+                    return true
+                }
+                return false
             }
             return targetSession === this.sessionId
         },
