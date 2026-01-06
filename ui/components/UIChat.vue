@@ -111,7 +111,11 @@ export default {
                 console.debug('UIChat: session not yet established, ignoring message')
                 return false
             }
-            return targetSession && targetSession === this.sessionId
+            if (!targetSession) {
+                console.debug('UIChat: processing broadcast message without session targeting')
+                return true
+            }
+            return targetSession === this.sessionId
         },
         renderMarkdown (text) {
             try {
@@ -190,10 +194,8 @@ export default {
             // Send to Node-RED
             const action = {
                 topic: 'user-message',
-                payload: this.newMessage
-            }
-            if (this.sessionId) {
-                action._session = { id: this.sessionId }
+                payload: this.newMessage,
+                _session: { id: this.sessionId }
             }
             this.send(action)
 
