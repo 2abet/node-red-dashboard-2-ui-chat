@@ -80,17 +80,30 @@ export default {
         return {
             messages: [],
             newMessage: '',
-            typing: false
+            typing: false,
+            sessionId: null
         }
     },
     computed: {
 
     },
     created () {
+        this.updateSessionId()
+        if (this.$socket?.on) {
+            this.$socket.on('connect', this.updateSessionId)
+        }
         // setup our event handlers, and informs Node-RED that this widget has loaded
         this.$dataTracker(this.id, this.onInput, this.onLoad)
     },
+    beforeUnmount () {
+        if (this.$socket?.off) {
+            this.$socket.off('connect', this.updateSessionId)
+        }
+    },
     methods: {
+        updateSessionId () {
+            this.sessionId = this.$socket?.id || null
+        },
         renderMarkdown (text) {
             try {
                 // Parse markdown and return HTML
@@ -109,6 +122,10 @@ export default {
             return div.innerHTML
         },
         onInput (msg) {
+            const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
+            if (targetSession && this.sessionId && targetSession !== this.sessionId) {
+                return
+            }
             if (msg.topic === '_typing') {
                 this.typing = true
             } else if (msg?.payload) {
@@ -126,6 +143,10 @@ export default {
             })
         },
         onLoad (msg) {
+            const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
+            if (targetSession && this.sessionId && targetSession !== this.sessionId) {
+                return
+            }
             // Handle initial load
             if (Array.isArray(msg?.payload)) {
                 this.messages = msg.payload.map(m => ({
@@ -157,7 +178,9 @@ export default {
             // Send to Node-RED
             this.send({
                 topic: 'user-message',
-                payload: this.newMessage
+                payload: this.newMessage,
+                _session: this.sessionId ? { id: this.sessionId } : undefined,
+                sessionId: this.sessionId || undefined
             })
 
             // Clear input
