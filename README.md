@@ -57,6 +57,48 @@ By assigning a `msg.topic` of `_typing`, then a placeholder "Typing..." message 
 
 Any other `msg.topic` values used are assumed to be the name of the "author" of the message.
 
+### Message API (inputs and outputs)
+
+The node accepts standard Node-RED messages on its single input and emits messages on its single output when a dashboard user sends a chat message.
+
+#### Inputs (messages into the node)
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `msg.payload` | `string` | Text to render as a received message. Markdown is supported and sanitized before rendering. |
+| `msg.topic` | `string` | Optional author label shown for received messages when **Show author name** is enabled. The special value `_typing` shows a temporary typing indicator until the next message arrives. |
+
+To preload history, send an **array** in `msg.payload` instead of a string. Each array entry should look like:
+
+```json
+{
+  "text": "Hello there",
+  "author": "Bot",
+  "sent": false,
+  "timestamp": 1715081130000
+}
+```
+
+- `text` (string) is the message content and supports Markdown formatting.
+- `sent` (boolean) controls alignment: `true` shows as a message sent by the user, `false` as received.
+- `author` (string, optional) labels the sender when author display is enabled.
+- `timestamp` (number, optional) sets the displayed time; defaults to the current time when omitted.
+
+Incoming messages are **not** forwarded to the output—they are stored and displayed in the widget only.
+
+#### Outputs (messages from the dashboard)
+
+When a dashboard user submits a message via the chat input, the node emits:
+
+```json
+{
+  "topic": "user-message",
+  "payload": "text the user typed"
+}
+```
+
+The `topic` value is fixed to `user-message`; `payload` contains the trimmed text entered by the user. This message will also appear immediately in the widget as a sent message.
+
 ## Development
 
 To get started, clone this repository:
