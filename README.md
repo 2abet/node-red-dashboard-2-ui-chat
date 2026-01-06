@@ -66,7 +66,7 @@ The node accepts standard Node-RED messages on its single input and emits messag
 | Property | Type | Description |
 | --- | --- | --- |
 | `msg.payload` | `string` | Text to render as a received message. Markdown is supported and sanitized before rendering. |
-| `msg.topic` | `string` | Optional author label shown for received messages when **Show author name** is enabled. Use `_typing` to show a temporary typing indicator until the next message arrives. |
+| `msg.topic` | `string` | Optional author label shown for received messages when **Show author name** is enabled. The special value `_typing` shows a temporary typing indicator until the next message arrives. |
 
 To preload history, send an **array** in `msg.payload` instead of a string. Each array entry should look like:
 
@@ -79,7 +79,7 @@ To preload history, send an **array** in `msg.payload` instead of a string. Each
 }
 ```
 
-- `text` (string) is rendered verbatim (with Markdown support).
+- `text` (string) is the message content and supports Markdown formatting.
 - `sent` (boolean) controls alignment: `true` shows as a message sent by the user, `false` as received.
 - `author` (string, optional) labels the sender when author display is enabled.
 - `timestamp` (number, optional) sets the displayed time; defaults to the current time when omitted.
