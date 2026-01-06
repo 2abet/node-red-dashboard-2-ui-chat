@@ -32,11 +32,13 @@
                     v-model="newMessage"
                     type="text"
                     :placeholder="props.inputPlaceholder === undefined ? 'Type a message...' : props.inputPlaceholder"
-                    :disabled="!state.enabled || !sessionId"
+                    :disabled="!!inputDisabledReason"
+                    :title="inputDisabledReason"
                     @keyup.enter="sendMessage"
                 >
                 <button
-                    class="nrdb-ui-chat-send" :disabled="!state.enabled || !newMessage.trim() || !sessionId"
+                    class="nrdb-ui-chat-send" :disabled="!!inputDisabledReason || !newMessage.trim()"
+                    :title="inputDisabledReason"
                     @click="sendMessage"
                 >
                     <AirplaneIcon />
@@ -85,36 +87,51 @@ export default {
         }
     },
     computed: {
-
+        inputDisabledReason () {
+            if (!this.sessionId) {
+                return 'Waiting for session to be established'
+            }
+            if (!this.state.enabled) {
+                return 'Input disabled'
+            }
+            return ''
+        }
     },
     created () {
-        this.updateSessionId()
         if (this.$socket?.on) {
             this.$socket.on('connect', this.updateSessionId)
+            this.$socket.on('disconnect', this.handleDisconnect)
         }
+        this.updateSessionId()
         // setup our event handlers, and informs Node-RED that this widget has loaded
         this.$dataTracker(this.id, this.onInput, this.onLoad)
     },
     beforeUnmount () {
         if (this.$socket?.off) {
             this.$socket.off('connect', this.updateSessionId)
+            this.$socket.off('disconnect', this.handleDisconnect)
         }
     },
     methods: {
         updateSessionId () {
             this.sessionId = this.$socket?.id || null
         },
+        handleDisconnect () {
+            this.sessionId = null
+            this.messages = []
+            this.typing = false
+        },
         isForCurrentSession (msg) {
             // Prefer _session.id (Dashboard 2), but accept legacy sessionId/socketId from older payloads
             const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
             if (!this.sessionId) {
-                console.warn('UIChat: session not yet established, ignoring message')
+                console.warn('UIChat: message received before session was established. This may indicate a timing issue in component initialization; the message will be ignored.')
                 return false
             }
             if (!targetSession) {
                 const allowBroadcast = this.props?.allowBroadcast ?? false
                 if (allowBroadcast) {
-                    console.warn('UIChat: processing broadcast message without session targeting')
+                    console.debug('UIChat: processing broadcast message without session targeting')
                     return true
                 }
                 console.warn('UIChat: dropping broadcast message without session targeting')
