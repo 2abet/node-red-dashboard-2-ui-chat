@@ -105,14 +105,14 @@ export default {
             this.sessionId = this.$socket?.id || null
         },
         isForCurrentSession (msg) {
-            // Accept legacy session identifiers for compatibility, prefer _session.id going forward
+            // Prefer _session.id, but accept legacy sessionId/socketId (in that order) for compatibility
             const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
             if (!this.sessionId) {
                 console.debug('UIChat: session not yet established, ignoring message')
                 return false
             }
             if (!targetSession) {
-                const allowBroadcast = this.props?.allowBroadcast !== false
+                const allowBroadcast = this.props?.allowBroadcast ?? true
                 if (allowBroadcast) {
                     console.debug('UIChat: processing broadcast message without session targeting')
                     return true
