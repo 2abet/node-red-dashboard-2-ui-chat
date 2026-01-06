@@ -104,6 +104,13 @@ export default {
         updateSessionId () {
             this.sessionId = this.$socket?.id || null
         },
+        isForCurrentSession (msg) {
+            const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
+            if (!this.sessionId) {
+                return !targetSession
+            }
+            return targetSession === this.sessionId
+        },
         renderMarkdown (text) {
             try {
                 // Parse markdown and return HTML
@@ -122,8 +129,7 @@ export default {
             return div.innerHTML
         },
         onInput (msg) {
-            const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
-            if (targetSession && this.sessionId && targetSession !== this.sessionId) {
+            if (!this.isForCurrentSession(msg)) {
                 return
             }
             if (msg.topic === '_typing') {
@@ -143,8 +149,7 @@ export default {
             })
         },
         onLoad (msg) {
-            const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
-            if (targetSession && this.sessionId && targetSession !== this.sessionId) {
+            if (!this.isForCurrentSession(msg)) {
                 return
             }
             // Handle initial load
@@ -176,12 +181,14 @@ export default {
             this.messages.push(message)
 
             // Send to Node-RED
-            this.send({
+            const action = {
                 topic: 'user-message',
-                payload: this.newMessage,
-                _session: this.sessionId ? { id: this.sessionId } : undefined,
-                sessionId: this.sessionId || undefined
-            })
+                payload: this.newMessage
+            }
+            if (this.sessionId) {
+                action._session = { id: this.sessionId }
+            }
+            this.send(action)
 
             // Clear input
             this.newMessage = ''
