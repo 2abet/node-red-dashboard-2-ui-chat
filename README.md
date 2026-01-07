@@ -93,11 +93,14 @@ When a dashboard user submits a message via the chat input, the node emits:
 ```json
 {
   "topic": "user-message",
-  "payload": "text the user typed"
+  "payload": "text the user typed",
+  "clientId": "stable-id-for-this-browser-tab"
 }
 ```
 
 The `topic` value is fixed to `user-message`; `payload` contains the trimmed text entered by the user. This message will also appear immediately in the widget as a sent message.
+
+Each browser keeps a stable `clientId` in `localStorage` so that when the user closes the page and returns later, their previous chat history is reloaded automatically. The **New chat** button in the widget lets a user discard the stored history and begin a fresh session; flows can also key their own session logic off `msg.clientId` or `msg._session.clientId` to resume the same conversation across reconnects.
 
 ## Development
 
