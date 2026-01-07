@@ -32,11 +32,13 @@
                     v-model="newMessage"
                     type="text"
                     :placeholder="props.inputPlaceholder === undefined ? 'Type a message...' : props.inputPlaceholder"
-                    :disabled="!state.enabled"
+                    :disabled="!!inputDisabledReason"
+                    :title="inputDisabledReason"
                     @keyup.enter="sendMessage"
                 >
                 <button
-                    class="nrdb-ui-chat-send" :disabled="!state.enabled || !newMessage.trim()"
+                    class="nrdb-ui-chat-send" :disabled="!!inputDisabledReason || !newMessage.trim()"
+                    :title="inputDisabledReason"
                     @click="sendMessage"
                 >
                     <AirplaneIcon />
@@ -80,17 +82,63 @@ export default {
         return {
             messages: [],
             newMessage: '',
-            typing: false
+            typing: false,
+            sessionId: null
         }
     },
     computed: {
-
+        inputDisabledReason () {
+            if (!this.sessionId) {
+                return 'Waiting for session to be established'
+            }
+            if (!this.state.enabled) {
+                return 'Input disabled'
+            }
+            return ''
+        }
     },
     created () {
+        if (this.$socket?.on) {
+            this.$socket.on('connect', this.updateSessionId)
+            this.$socket.on('disconnect', this.handleDisconnect)
+        }
+        this.updateSessionId()
         // setup our event handlers, and informs Node-RED that this widget has loaded
         this.$dataTracker(this.id, this.onInput, this.onLoad)
     },
+    beforeUnmount () {
+        if (this.$socket?.off) {
+            this.$socket.off('connect', this.updateSessionId)
+            this.$socket.off('disconnect', this.handleDisconnect)
+        }
+    },
     methods: {
+        updateSessionId () {
+            this.sessionId = this.$socket?.id || null
+        },
+        handleDisconnect () {
+            this.sessionId = null
+            this.messages = []
+            this.typing = false
+        },
+        isForCurrentSession (msg) {
+            // Prefer _session.id (Dashboard 2), but accept legacy sessionId/socketId from older payloads
+            const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
+            if (!this.sessionId) {
+                console.warn('UIChat: message received before session was established. This may indicate a timing issue in component initialization; the message will be ignored.')
+                return false
+            }
+            if (!targetSession) {
+                const allowBroadcast = this.props?.allowBroadcast ?? false
+                if (allowBroadcast) {
+                    console.debug('UIChat: processing broadcast message without session targeting')
+                    return true
+                }
+                console.warn('UIChat: dropping broadcast message without session targeting')
+                return false
+            }
+            return targetSession === this.sessionId
+        },
         renderMarkdown (text) {
             try {
                 // Parse markdown and return HTML
@@ -109,6 +157,9 @@ export default {
             return div.innerHTML
         },
         onInput (msg) {
+            if (!this.isForCurrentSession(msg)) {
+                return
+            }
             if (msg.topic === '_typing') {
                 this.typing = true
             } else if (msg?.payload) {
@@ -126,6 +177,9 @@ export default {
             })
         },
         onLoad (msg) {
+            if (!this.isForCurrentSession(msg)) {
+                return
+            }
             // Handle initial load
             if (Array.isArray(msg?.payload)) {
                 this.messages = msg.payload.map(m => ({
@@ -143,6 +197,11 @@ export default {
         sendMessage () {
             if (!this.newMessage.trim() || !this.state.enabled) return
 
+            if (!this.sessionId) {
+                console.warn('UIChat: cannot send message until session is established')
+                return
+            }
+
             // Create message object
             const message = {
                 author: 'user',
@@ -155,10 +214,12 @@ export default {
             this.messages.push(message)
 
             // Send to Node-RED
-            this.send({
+            const action = {
                 topic: 'user-message',
-                payload: this.newMessage
-            })
+                payload: this.newMessage,
+                _session: { id: this.sessionId }
+            }
+            this.send(action)
 
             // Clear input
             this.newMessage = ''
