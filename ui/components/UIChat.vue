@@ -1,5 +1,19 @@
 <template>
     <div class="nrdb-ui-chat-container" :class="className">
+        <div class="nrdb-ui-chat-toolbar">
+            <div v-if="clientId" class="nrdb-ui-session-id">
+                Session: {{ clientId.slice(0, 8) }}…
+            </div>
+            <button
+                class="nrdb-ui-chat-reset"
+                type="button"
+                :disabled="!state.enabled && !messages.length"
+                title="Start a new chat session"
+                @click="startNewChat"
+            >
+                New chat
+            </button>
+        </div>
         <!-- Chat messages container -->
         <div class="nrdb-ui-chat-messages">
             <div
@@ -83,7 +97,8 @@ export default {
             messages: [],
             newMessage: '',
             typing: false,
-            sessionId: null
+            sessionId: null,
+            clientId: null
         }
     },
     computed: {
@@ -98,6 +113,12 @@ export default {
         }
     },
     created () {
+        this.clientId = this.loadClientId()
+        const persistedMessages = this.restoreMessages()
+        if (persistedMessages.length) {
+            this.messages = persistedMessages
+        }
+
         if (this.$socket?.on) {
             this.$socket.on('connect', this.updateSessionId)
             this.$socket.on('disconnect', this.handleDisconnect)
@@ -113,20 +134,101 @@ export default {
         }
     },
     methods: {
+        storageKey (suffix) {
+            return `ui-chat:${this.id}:${suffix}`
+        },
+        generateClientId () {
+            return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ui-chat-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        },
+        loadClientId () {
+            try {
+                const existing = window?.localStorage?.getItem(this.storageKey('clientId'))
+                if (existing) {
+                    return existing
+                }
+                const generated = this.generateClientId()
+                window?.localStorage?.setItem(this.storageKey('clientId'), generated)
+                return generated
+            } catch (err) {
+                console.warn('UIChat: Unable to access localStorage, session continuity will be disabled', err)
+                return null
+            }
+        },
+        persistClientId () {
+            try {
+                if (this.clientId) {
+                    window?.localStorage?.setItem(this.storageKey('clientId'), this.clientId)
+                }
+            } catch (err) {
+                console.warn('UIChat: Unable to persist client id', err)
+            }
+        },
+        persistMessages () {
+            try {
+                window?.localStorage?.setItem(this.storageKey('history'), JSON.stringify(this.messages))
+            } catch (err) {
+                console.warn('UIChat: Unable to persist chat history', err)
+            }
+        },
+        restoreMessages () {
+            try {
+                const raw = window?.localStorage?.getItem(this.storageKey('history'))
+                if (!raw) {
+                    return []
+                }
+                const parsed = JSON.parse(raw)
+                if (!Array.isArray(parsed)) {
+                    return []
+                }
+                return parsed.map(m => ({
+                    ...m,
+                    time: m.time || new Date(m.timestamp || Date.now()).toLocaleTimeString()
+                }))
+            } catch (err) {
+                console.warn('UIChat: Unable to restore chat history', err)
+                return []
+            }
+        },
+        startNewChat () {
+            const previousClientId = this.clientId
+            this.clientId = this.generateClientId()
+            this.messages = []
+            this.typing = false
+            this.persistClientId()
+            this.persistMessages()
+            if (this.sessionId) {
+                this.send({
+                    topic: 'user-session-reset',
+                    previousClientId,
+                    clientId: this.clientId,
+                    _session: { id: this.sessionId, clientId: this.clientId }
+                })
+            }
+        },
         updateSessionId () {
             this.sessionId = this.$socket?.id || null
+            if (this.sessionId && this.clientId) {
+                this.send({
+                    topic: '_session_init',
+                    clientId: this.clientId,
+                    _session: { id: this.sessionId, clientId: this.clientId }
+                })
+            }
         },
         handleDisconnect () {
             this.sessionId = null
-            this.messages = []
             this.typing = false
         },
         isForCurrentSession (msg) {
+            const targetClient = msg?.clientId || msg?._session?.clientId
             // Prefer _session.id (Dashboard 2), but accept legacy sessionId/socketId from older payloads
             const targetSession = msg?._session?.id || msg?.sessionId || msg?.socketId
             if (!this.sessionId) {
                 console.warn('UIChat: message received before session was established. This may indicate a timing issue in component initialization; the message will be ignored.')
-                return false
+                return targetClient ? targetClient === this.clientId : false
+            }
+            if (targetClient && this.clientId) {
+                return targetClient === this.clientId
             }
             if (!targetSession) {
                 const allowBroadcast = this.props?.allowBroadcast ?? false
@@ -165,12 +267,15 @@ export default {
             } else if (msg?.payload) {
                 // Handle incoming messages from Node-RED
                 this.typing = false
+                const timestamp = msg.timestamp || Date.now()
                 this.messages.push({
                     author: msg.topic,
                     text: msg.payload,
-                    time: new Date().toLocaleTimeString(),
-                    sent: false
+                    time: new Date(timestamp).toLocaleTimeString(),
+                    sent: false,
+                    timestamp
                 })
+                this.persistMessages()
             }
             this.$nextTick(() => {
                 this.scrollToBottom()
@@ -186,6 +291,7 @@ export default {
                     ...m,
                     time: new Date(m.timestamp || Date.now()).toLocaleTimeString()
                 }))
+                this.persistMessages()
                 this.$nextTick(() => {
                     this.scrollToBottom()
                 })
@@ -203,21 +309,25 @@ export default {
             }
 
             // Create message object
+            const timestamp = Date.now()
             const message = {
                 author: 'user',
                 text: this.newMessage,
-                time: new Date().toLocaleTimeString(),
-                sent: true
+                time: new Date(timestamp).toLocaleTimeString(),
+                sent: true,
+                timestamp
             }
 
             // Add to local messages
             this.messages.push(message)
+            this.persistMessages()
 
             // Send to Node-RED
             const action = {
                 topic: 'user-message',
                 payload: this.newMessage,
-                _session: { id: this.sessionId }
+                clientId: this.clientId,
+                _session: { id: this.sessionId, clientId: this.clientId }
             }
             this.send(action)
 
